@@ -46,12 +46,19 @@ def load_boundaries():
         gdf = gdf.to_crs('EPSG:4326')
     return gdf
 
-@st.cache_data 
+@st.cache_data(ttl=300)
 def load_statistics():
-    """Load per-polygon statistics."""
+    """Load per-polygon statistics (cache refreshes every 5 min)."""
     stats_file = EXPORTS_DIR / 'drainage_summary_full.csv'
     if stats_file.exists():
-        return pd.read_csv(stats_file)
+        df = pd.read_csv(stats_file)
+        # Ensure numeric columns are actually numeric
+        numeric_cols = ['streams_count', 'streams_length_km', 'water_bodies_count',
+                        'water_bodies_area_ha', 'watersheds_count', 'flood_risk_area_ha']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        return df
     return None
 
 # Page header
