@@ -124,7 +124,10 @@ for idx, polygon in boundaries_utm.iterrows():
     
     # Statistics for each layer
     for layer_name, layer_data in loaded_layers.items():
-        utm_gdf = layer_data['utm']
+        # Use UTM version for accurate area calculations, ensure CRS match
+        utm_gdf = layer_data['utm'].copy()
+        if utm_gdf.crs is None or str(utm_gdf.crs) != 'EPSG:32643':
+            utm_gdf = utm_gdf.to_crs('EPSG:32643')
 
         if not utm_gdf.empty:
             # Validate geometries before overlay

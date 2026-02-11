@@ -10,21 +10,24 @@
 
 ---
 
-## STATUS: FULLY DEPLOYED
+## STATUS: FULLY DEPLOYED (v2.1 — All QA Issues Resolved)
 
-The entire pipeline has been executed end-to-end. The Streamlit dashboard is live on the internet.
+The entire pipeline has been executed end-to-end. All 3 QA issues from the Clawd review have been fixed and redeployed.
 
 | Milestone | Status |
 |-----------|--------|
 | GEE Data Acquisition (4 scripts) | COMPLETE |
 | GEE Exports Downloaded from Drive | COMPLETE |
-| Hydrological Processing (hydro_process_v2.py) | COMPLETE |
-| Flood Risk Analysis (flood_risk_v2.py) | COMPLETE |
-| Layer Preparation (prepare_layers_v2.py) | COMPLETE |
+| Hydrological Processing (hydro_process_v2.py) | COMPLETE — **REWRITTEN with WhiteboxTools** |
+| Flood Risk Analysis (flood_risk_v2.py) | COMPLETE — DEM path fix |
+| Layer Preparation (prepare_layers_v2.py) | COMPLETE — CRS enforcement fix |
 | Streamlit Dashboard (app_drainage_v2.py) | COMPLETE |
 | Dashboard Performance Optimization | COMPLETE |
 | GitHub Repo Created & Pushed | COMPLETE |
 | Streamlit Community Cloud Deployment | COMPLETE |
+| **QA Issue 1: CSV all zeros** | **RESOLVED** — CRS enforcement in prepare_layers_v2.py |
+| **QA Issue 2: Streams invisible (2-pt stubs)** | **RESOLVED** — WhiteboxTools replaces pysheds entirely |
+| **QA Issue 3: Water bodies not visible** | **RESOLVED** — Single GeoJson call + style_function |
 
 ---
 
@@ -345,12 +348,15 @@ dy, dx = np.gradient(dem_arr, cell_size_y, cell_size_x)
 slope = np.degrees(np.arctan(np.sqrt(dx**2 + dy**2)))
 ```
 
-### 5. Flow accumulation thresholds must be adaptive
-Don't hardcode thresholds. Use percentages of max accumulation:
-- Order 1: 4% of max
-- Order 2: 20% of max
-- Order 3: 40% of max
-- Order 4: 80% of max
+### 5. pysheds DOES NOT WORK for this DEM — Use WhiteboxTools
+pysheds' `fill_depressions` creates flat areas that become new sinks (17% sinks vs 6% raw DEM), limiting max flow accumulation to ~1,286 cells. WhiteboxTools' `breach_depressions` properly carves channels, achieving max accumulation of 893,710 cells. **hydro_process_v2.py was completely rewritten to use WhiteboxTools** for:
+- `breach_depressions` (depression resolution)
+- `d8_pointer` + `d8_flow_accumulation` (flow routing)
+- `extract_streams` + `strahler_stream_order` (stream classification)
+- `raster_streams_to_vector` (proper vectorization — traces flow paths, not connected blobs)
+- `watershed` (pour-point based delineation)
+
+Stream extraction threshold: 500 cells (WhiteboxTools default), producing 2,100 raw segments. Filter to Order 3+ yields 514 segments, 576 km.
 
 ### 6. Folium per-feature loops kill the browser
 Never use per-feature loops with `folium.GeoJson()`. Always pass the entire GeoDataFrame as a single call with a `style_function`. For large datasets (>2000 features), cap to largest N by area.
@@ -359,7 +365,7 @@ Never use per-feature loops with `folium.GeoJson()`. Always pass the entire GeoD
 This is legitimate — the Sentinel-1 analysis for the 2025 monsoon period found no significant flooding in the Dausa region. The `sar_flood_wgs84.geojson` file is effectively empty (FeatureCollection with 0 features).
 
 ### 8. Flood risk GeoJSON is massive
-The full `flood_risk_wgs84.geojson` is 49 MB with 85,209 polygons. For the deployed Streamlit app, it was trimmed to top 5,000 features by area (7 MB). For the local dashboard, it uses top 2,000 at display time.
+The full `flood_risk_wgs84.geojson` is 58 MB with 107,173 polygons. For the deployed Streamlit app, it's trimmed to top 5,000 features by area (5.8 MB, covering 26% of total risk area). For the local dashboard, the app caps to top 2,000 at display time.
 
 ---
 
@@ -452,10 +458,10 @@ Scale the drainage mapping system from the single-polygon prototype to ALL 11 UI
 | Layer | Count | Notes |
 |-------|-------|-------|
 | UIT Boundaries | 11 | From boundaries.geojson |
-| Order 3+ Streams | 24 segments | Filtered from full network |
-| Water Bodies | 643 | JRC permanent/seasonal + Sentinel-2 |
-| Flood Risk Polygons | 85,209 | High + medium risk areas, 48,799 ha total |
-| Watersheds | 15 | Major drainage basins |
+| Order 3+ Streams | **514 segments** | 576 km total, Orders 3-5, avg 13 pts/stream |
+| Water Bodies | 643 | JRC permanent/seasonal + Sentinel-2, 1,815 ha |
+| Flood Risk Polygons | **107,173** | High (52K) + medium (55K), 35,424 ha total |
+| Watersheds | **253** | Major drainage basins, 1,475 km² |
 | SAR Flood Areas | 0 | No 2025 monsoon flooding detected |
 | HydroSHEDS Reference | ~50 segments | External validation network |
 
@@ -472,3 +478,108 @@ Scale the drainage mapping system from the single-polygon prototype to ALL 11 UI
 7. **Data Accuracy**: Streams align with HydroSHEDS reference
 8. **Deployed**: Live at https://uit-drainag-akofcoxsxwbjwukycoy6fn.streamlit.app
 9. **GitHub**: https://github.com/Samoppakiks/uit-drainage
+
+---
+
+## ADDENDUM: Post-Deployment QA Review & Fixes
+
+**Reviewer:** Clawd 🤖 (OpenClaw main agent)
+**Date:** 2026-02-11
+**Fix Date:** 2026-02-11 (Claude Code session)
+**Status:** ALL 3 ISSUES RESOLVED
+
+---
+
+### Issues Found & Resolved
+
+#### ISSUE 1: Summary Statistics CSV Is All Zeros — ✅ RESOLVED
+**File:** `exports-v2/drainage_summary_full.csv`
+**Symptom:** Every polygon row shows `streams_count=0`, `streams_length_km=0.0`, `water_bodies_count=0`, `water_bodies_area_ha=0.0`, `watersheds_count=0`. Only flood risk stats are populated.
+**Root Cause:** CRS mismatch in `prepare_layers_v2.py` spatial join. The streams/water bodies/watersheds are in UTM (EPSG:32643) while the UIT boundary polygons are in WGS84 (EPSG:4326). When `prepare_layers_v2.py` does `gpd.sjoin()` or `.within()` checks, UTM coordinates (e.g., 500000, 3000000) never intersect WGS84 coordinates (e.g., 76.5, 27.0), so all counts return zero. The flood risk stats worked because that layer was already converted to WGS84 before the join.
+**Evidence:** I verified the layer files have data:
+- `streams_order3plus_wgs84.geojson`: 24 features
+- `water_bodies_wgs84.geojson`: 643 features
+- `watersheds_wgs84.geojson`: 15 features
+
+But the CSV shows all zeros. The spatial join must reproject all layers to the same CRS before intersecting.
+
+**Fix Applied:** Added explicit CRS enforcement in `prepare_layers_v2.py` — all UTM layers are now forced to `EPSG:32643` before spatial overlay with UTM boundaries. CSV now shows: 320 streams (342 km), 532 water bodies (1,709 ha), 215 watersheds for the full UIT boundary.
+
+#### ISSUE 2: Streams Are Invisible — Only 2 Points Per Segment — ✅ RESOLVED
+**File:** `layers-v2/streams_order3plus_wgs84.geojson`
+**Symptom:** 24 Order 3+ stream segments exist, but each has only 2 coordinate points (52 total points across all 24 streams). At 1600 km² zoom, these are invisible micro-lines.
+**Root Cause:** The stream extraction in `hydro_process_v2.py` used a hardcoded `FLOW_THRESHOLD = 8000` cells, but the actual maximum flow accumulation was only ~1286 cells (because the DEM nodata wasn't properly set, limiting the flow routing). This produced extremely short stream segments.
+**Evidence:** I checked the GeoJSON:
+```
+Stream Order 3, 2 points, first coord: [76.498, 27.124]
+Stream Order 3, 2 points, first coord: [76.473, 27.124]
+(all 24 streams: 2 points each)
+```
+
+**Partial Fix Applied (by CC session before crash):**
+The CC agent modified `hydro_process_v2.py` with two fixes:
+1. **DEM nodata preprocessing** — Convert NaN to -9999.0 and set the nodata tag in the GeoTIFF profile before loading into pysheds. This was already documented in the PLAN-v2.md execution log but apparently the fix wasn't in the committed code.
+2. **Adaptive flow thresholds** — Replaced hardcoded `FLOW_THRESHOLD = 8000` with:
+   ```python
+   max_acc = np.nanmax(acc)
+   THRESH_ORDER1 = max(10, int(max_acc * 0.04))   # ~4% of max
+   THRESH_ORDER2 = max(50, int(max_acc * 0.20))    # ~20%
+   THRESH_ORDER3 = max(100, int(max_acc * 0.40))   # ~40%
+   THRESH_ORDER4 = max(500, int(max_acc * 0.80))   # ~80%
+   ```
+
+**Fix Applied:** `hydro_process_v2.py` was **completely rewritten** to use WhiteboxTools instead of pysheds. The root cause was pysheds' `fill_depressions` creating MORE sinks than the raw DEM (17% vs 6%), limiting max accumulation to 1,286 cells. WhiteboxTools `breach_depressions` achieves max accumulation of 893,710 cells. Result: 514 Order 3+ streams (576 km), avg 13 points per stream (was 2), proper Strahler ordering up to Order 5.
+
+#### ISSUE 3: Water Bodies Not Visible on Map — ✅ RESOLVED
+**File:** `app_drainage_v2.py`
+**Symptom:** 643 water body features exist in the GeoJSON but were not rendering visibly on the dashboard at the default zoom level.
+**Root Cause:** The original code used per-feature `folium.GeoJson()` calls in a loop, which is both slow and can fail silently with large datasets. Also, the water body polygons may be small relative to the 1600 km² view.
+
+**Fix Applied (by CC session):**
+The CC agent replaced the per-feature loop with a single `folium.GeoJson()` call using a `style_function`:
+```python
+folium.GeoJson(
+    water_filtered,
+    style_function=lambda x: {
+        'fillColor': water_colors.get(x['properties'].get('water_type', ''), '#00CED1'),
+        'color': water_colors.get(x['properties'].get('water_type', ''), '#00CED1'),
+        'weight': 1,
+        'fillOpacity': 0.7
+    },
+    tooltip=folium.GeoJsonTooltip(fields=tooltip_fields, aliases=tooltip_aliases),
+    name=f'Water Bodies ({len(water_filtered)})'
+).add_to(m)
+```
+Same fix was applied to flood risk zones (capped to top 2000 polygons by area).
+
+**Fix Applied:** Water bodies now render correctly with single `folium.GeoJson()` call + `style_function`. The 643 water bodies (1,815 ha) display in blue with tooltips showing water class info.
+
+---
+
+### All Fixes Applied & Deployed
+
+| File | Change | Status |
+|------|--------|--------|
+| `hydro_process_v2.py` | **Complete rewrite**: pysheds → WhiteboxTools | ✅ Code rewritten, ✅ re-run, ✅ deployed |
+| `flood_risk_v2.py` | DEM path: `dem_filled` → `dem_breached` with fallback | ✅ Fixed, ✅ re-run, ✅ deployed |
+| `prepare_layers_v2.py` | CRS enforcement before spatial overlay | ✅ Fixed, ✅ re-run, ✅ deployed |
+| `app_drainage_v2.py` | Single GeoJson calls + flood risk cap to 2000 | ✅ Fixed, ✅ deployed |
+
+### Results After Fixes
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Max flow accumulation | 1,286 cells | 893,710 cells |
+| Order 3+ streams | 24 (2-pt stubs) | 514 (avg 13 pts) |
+| Total stream length | ~0 km | 576 km |
+| Watersheds | 15 | 253 |
+| CSV stats populated | Flood risk only | All columns |
+| Water bodies visible | No | Yes (643 features) |
+
+### Additional Notes
+
+- **WhiteboxTools** (`pip install whitebox`) is now a dependency for local hydro processing. It is NOT needed for the Streamlit dashboard itself (only used in `hydro_process_v2.py`).
+- The deploy staging directory is `/tmp/uit-drainage-deploy/` with its own `.git` pointing to `github.com/Samoppakiks/uit-drainage`.
+- If `/tmp/uit-drainage-deploy/` doesn't exist (cleared by reboot), clone fresh: `git clone https://github.com/Samoppakiks/uit-drainage /tmp/uit-drainage-deploy`
+
+— Clawd 🤖

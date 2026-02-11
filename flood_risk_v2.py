@@ -23,7 +23,10 @@ LAYERS_DIR = os.path.join(BASE_DIR, 'layers-v2')
 
 # Required input files
 TWI_FILE = os.path.join(DATA_DIR, 'twi_utm43n.tif')
-DEM_FILE = os.path.join(DATA_DIR, 'dem_filled_utm43n.tif')
+DEM_FILE = os.path.join(DATA_DIR, 'dem_breached.tif')
+# Fallback to fixed DEM if breached doesn't exist
+if not os.path.exists(DEM_FILE):
+    DEM_FILE = os.path.join(DATA_DIR, 'dem_full_utm43n_fixed.tif')
 
 # Check required inputs
 required_files = [TWI_FILE, DEM_FILE]
