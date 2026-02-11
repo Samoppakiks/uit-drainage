@@ -556,7 +556,49 @@ Same fix was applied to flood risk zones (capped to top 2000 polygons by area).
 
 ---
 
-### All Fixes Applied & Deployed
+---
+
+## ADDENDUM 2: Client Feature Requests (Feb 11, from Devendra)
+
+**Date:** 2026-02-11
+**Implemented:** 2026-02-11 (Claude Code session)
+**Status:** ALL 3 REQUESTS IMPLEMENTED & DEPLOYED
+
+### Request 1 & 2 (Combined): Per-Order Stream Toggles — ✅ DONE
+
+**What was requested:** Individual toggles for each Strahler stream order (1-5), with Order 1-2 (minor nalas) available as well.
+
+**What was implemented:**
+- Split the full 2,100-segment WhiteboxTools output into 5 per-order GeoJSON files:
+  | Order | Description | Segments | Length | File Size |
+  |-------|-------------|----------|--------|-----------|
+  | 1 | Minor Nalas | 1,057 | 1,253 km | 898 KB |
+  | 2 | Secondary | 529 | 586 km | 423 KB |
+  | 3 | Tertiary | 251 | 303 km | 206 KB |
+  | 4 | Main Channels | 164 | 181 km | 124 KB |
+  | 5 | Major Rivers | 99 | 92 km | 63 KB |
+- Replaced single "Stream Network (Order 3+)" checkbox with a **multiselect dropdown**
+- Default selection: Order 3, 4, 5 (same as before — major streams)
+- User can toggle any combination of orders on/off
+- Each order has distinct styling:
+  - Color: light blue (#87CEFA) for Order 1 → dark navy (#00008B) for Order 5
+  - Weight: 1px for Order 1 → 4px for Order 5
+  - Opacity: 0.5 for Order 1 → 1.0 for Order 5
+- Folium layer control shows per-order labels with feature counts
+- Files: `layers-v2/streams_order{1-5}_wgs84.geojson`
+
+### Request 3: KML Download Button — ✅ DONE
+
+**What was requested:** Download button for KML on the website.
+
+**What was implemented:**
+- The download button code already existed in `app_drainage_v2.py`
+- The KML file (8.4 MB, regenerated with WhiteboxTools streams) was copied to the deploy staging directory
+- `exports-v2/drainage_master_plan_full.kml` is now in the GitHub repo and available for download on the live site
+
+---
+
+### All Fixes & Features Applied & Deployed
 
 | File | Change | Status |
 |------|--------|--------|
@@ -564,6 +606,10 @@ Same fix was applied to flood risk zones (capped to top 2000 polygons by area).
 | `flood_risk_v2.py` | DEM path: `dem_filled` → `dem_breached` with fallback | ✅ Fixed, ✅ re-run, ✅ deployed |
 | `prepare_layers_v2.py` | CRS enforcement before spatial overlay | ✅ Fixed, ✅ re-run, ✅ deployed |
 | `app_drainage_v2.py` | Single GeoJson calls + flood risk cap to 2000 | ✅ Fixed, ✅ deployed |
+| `app_drainage_v2.py` | Per-order stream toggles (multiselect, Orders 1-5) | ✅ Implemented, ✅ deployed |
+| `app_drainage_v2.py` | Cache fix: `ttl=300` on `load_statistics()` | ✅ Fixed, ✅ deployed |
+| `streams_order{1-5}_wgs84.geojson` | 5 per-order stream GeoJSON files | ✅ Created, ✅ deployed |
+| `drainage_master_plan_full.kml` | Updated KML (8.4 MB) with WhiteboxTools streams | ✅ Updated, ✅ deployed |
 
 ### Results After Fixes
 
