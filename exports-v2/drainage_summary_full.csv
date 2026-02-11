@@ -1,0 +1,12 @@
+polygon_id,polygon_name,layer_type,area_km2,streams_count,streams_length_km,streams_order3_count,streams_order4_count,streams_order5_count,streams_order6_count,watersheds_count,watersheds_area_km2,flood_risk_zones,flood_risk_area_ha,flood_risk_high_zones,flood_risk_medium_zones,flood_risk_low_zones,water_bodies_count,water_bodies_area_ha,water_permanent_count,water_seasonal_count,water_post_monsoon_count,hydrosheds_count
+0,,UIT_Urban_Boundary,893.8295880133688,0,0.0,0,0,0,0,0,0.0,47296,22386.87,18299,28997,0,0,0.0,0,0,0,0
+1,LAWAN,Tehsil,41.65166985569083,0,0.0,0,0,0,0,0,0.0,3284,1290.78,1339,1945,0,0,0.0,0,0,0,0
+2,BASWA,Tehsil,4.7111943465831505,0,0.0,0,0,0,0,0,0.0,265,85.41,89,176,0,0,0.0,0,0,0,0
+3,SIKRAI,Tehsil,47.77916288512653,0,0.0,0,0,0,0,0,0.0,2367,1458.0,822,1545,0,0,0.0,0,0,0,0
+4,BHANDAREJ,Tehsil,92.7678059178649,0,0.0,0,0,0,0,0,0.0,5812,1863.27,2281,3531,0,0,0.0,0,0,0,0
+5,,Tehsil,277.46954900720635,0,0.0,0,0,0,0,0,0.0,10474,9170.46,3740,6734,0,0,0.0,0,0,0,0
+6,SAINTHAL,Tehsil,90.83263754809515,0,0.0,0,0,0,0,0,0.0,4560,1817.28,1811,2749,0,0,0.0,0,0,0,0
+7,DAUSA,Tehsil,230.1154545948017,0,0.0,0,0,0,0,0,0.0,15931,5801.13,6380,9551,0,0,0.0,0,0,0,0
+8,KUNDAL,Tehsil,77.96065477866102,0,0.0,0,0,0,0,0,0.0,3929,1657.35,1543,2386,0,0,0.0,0,0,0,0
+9,0,Bandikui_Notified,42.96128323993625,0,0.0,0,0,0,0,0,0.0,1712,603.45,554,1158,0,0,0.0,0,0,0,0
+10,0,Dausa_Notified,111.77671741425263,0,0.0,0,0,0,0,0,0.0,7196,2664.81,2832,4364,0,0,0.0,0,0,0,0
