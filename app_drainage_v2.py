@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Streamlit Dashboard v2: UIT Dausa Drainage Master Plan (Full Scale)
-Interactive dashboard for all 11 UIT polygons with Order 3+ streams,
+Interactive dashboard for all 11 UIT polygons with per-order stream toggles,
 UTM-based measurements, and complete drainage analysis
 """
 
@@ -91,8 +91,24 @@ selected_polygon = st.sidebar.selectbox(
 st.sidebar.subheader("📍 Layer Visibility")
 
 show_boundaries = st.sidebar.checkbox("UIT Boundaries", True)
-show_streams = st.sidebar.checkbox("🌊 Stream Network (Order 3+)", True)
-show_water = st.sidebar.checkbox("💧 Water Bodies", True)  
+
+# Stream order multiselect
+st.sidebar.markdown("**🌊 Stream Network**")
+STREAM_ORDER_LABELS = {
+    1: "Order 1 — Minor Nalas",
+    2: "Order 2 — Secondary",
+    3: "Order 3 — Tertiary",
+    4: "Order 4 — Main Channels",
+    5: "Order 5 — Major Rivers",
+}
+selected_stream_orders = st.sidebar.multiselect(
+    "Show stream orders:",
+    options=[1, 2, 3, 4, 5],
+    default=[3, 4, 5],
+    format_func=lambda x: STREAM_ORDER_LABELS.get(x, f"Order {x}")
+)
+
+show_water = st.sidebar.checkbox("💧 Water Bodies", True)
 show_flood_risk = st.sidebar.checkbox("⚠️ Flood Risk Zones", True)
 show_watersheds = st.sidebar.checkbox("🏞️ Watersheds", False)
 show_sar_flood = st.sidebar.checkbox("📡 SAR Flood History", False)
@@ -104,8 +120,21 @@ base_map = st.sidebar.selectbox(
     ["Google Satellite", "Google Maps", "OpenStreetMap"]
 )
 
-# Load layers
-streams = load_layer('streams_order3plus')
+# Load per-order stream layers
+stream_layers = {}
+for order in [1, 2, 3, 4, 5]:
+    layer = load_layer(f'streams_order{order}')
+    if layer is not None and not layer.empty:
+        stream_layers[order] = layer
+
+# Legacy: also try loading combined order3plus if per-order files don't exist
+if not stream_layers:
+    legacy = load_layer('streams_order3plus')
+    if legacy is not None and not legacy.empty:
+        for order in legacy['stream_order'].unique():
+            stream_layers[int(order)] = legacy[legacy['stream_order'] == order].copy()
+
+streams = None  # Replaced by stream_layers dict
 water_bodies = load_layer('water_bodies')
 flood_risk = load_layer('flood_risk')
 watersheds = load_layer('watersheds')
@@ -184,14 +213,14 @@ def filter_to_polygon(gdf, polygon_idx):
 
 if selected_polygon > 0:  # Single polygon selected
     polygon_idx = selected_polygon - 1
-    streams_filtered = filter_to_polygon(streams, polygon_idx)
+    streams_filtered = {o: filter_to_polygon(gdf, polygon_idx) for o, gdf in stream_layers.items()}
     water_filtered = filter_to_polygon(water_bodies, polygon_idx)
     flood_risk_filtered = filter_to_polygon(flood_risk, polygon_idx)
     watersheds_filtered = filter_to_polygon(watersheds, polygon_idx)
     sar_flood_filtered = filter_to_polygon(sar_flood, polygon_idx)
     hydrosheds_filtered = filter_to_polygon(hydrosheds, polygon_idx)
 else:  # All polygons
-    streams_filtered = streams
+    streams_filtered = stream_layers
     water_filtered = water_bodies
     flood_risk_filtered = flood_risk
     watersheds_filtered = watersheds
@@ -243,24 +272,29 @@ if show_boundaries:
             name='UIT Boundaries'
         ).add_to(m)
 
-# Add stream network (Order 3+ only)
-if show_streams and streams_filtered is not None and not streams_filtered.empty:
-    stream_colors = {3: '#4169E1', 4: '#0000CD', 5: '#00008B', 6: '#000080'}
-    stream_weights = {3: 2, 4: 3, 5: 4, 6: 5}
-    
-    folium.GeoJson(
-        streams_filtered,
-        style_function=lambda x: {
-            'color': stream_colors.get(int(x['properties'].get('stream_order', 3)), '#4169E1'),
-            'weight': stream_weights.get(int(x['properties'].get('stream_order', 3)), 2),
-            'opacity': 0.8
-        },
-        tooltip=folium.GeoJsonTooltip(
-            fields=[c for c in ['stream_order', 'length_m_smoothed'] if c in streams_filtered.columns],
-            aliases=[a for c, a in [('stream_order', 'Order'), ('length_m_smoothed', 'Length (m)')] if c in streams_filtered.columns]
-        ),
-        name=f'Streams Order 3+ ({len(streams_filtered)})'
-    ).add_to(m)
+# Add stream network — per-order layers
+stream_colors = {1: '#87CEFA', 2: '#6495ED', 3: '#4169E1', 4: '#0000CD', 5: '#00008B'}
+stream_weights = {1: 1, 2: 1.5, 3: 2, 4: 3, 5: 4}
+stream_opacities = {1: 0.5, 2: 0.6, 3: 0.8, 4: 0.9, 5: 1.0}
+
+for order in sorted(selected_stream_orders):
+    order_gdf = streams_filtered.get(order)
+    if order_gdf is not None and not order_gdf.empty:
+        color = stream_colors.get(order, '#4169E1')
+        weight = stream_weights.get(order, 2)
+        opacity = stream_opacities.get(order, 0.8)
+
+        tooltip_fields = [c for c in ['stream_order', 'length_m_smoothed'] if c in order_gdf.columns]
+        tooltip_aliases = [a for c, a in [('stream_order', 'Order'), ('length_m_smoothed', 'Length (m)')] if c in order_gdf.columns]
+
+        folium.GeoJson(
+            order_gdf,
+            style_function=lambda x, c=color, w=weight, o=opacity: {
+                'color': c, 'weight': w, 'opacity': o
+            },
+            tooltip=folium.GeoJsonTooltip(fields=tooltip_fields, aliases=tooltip_aliases) if tooltip_fields else None,
+            name=f'Order {order} ({len(order_gdf)})'
+        ).add_to(m)
 
 # Add water bodies
 if show_water and water_filtered is not None and not water_filtered.empty:
@@ -400,7 +434,7 @@ with col2:
             st.metric("Area", f"{polygon_stats.get('area_km2', 0):.1f} km²")
             
             # Stream statistics
-            st.markdown("**🌊 Streams (Order 3+)**")
+            st.markdown("**🌊 Streams**")
             total_length = polygon_stats.get('streams_length_km', 0)
             total_count = polygon_stats.get('streams_count', 0)
             st.write(f"Total length: {total_length} km")
@@ -493,7 +527,7 @@ with export_cols[2]:
 st.markdown("---")
 st.markdown("**🎯 Client Requirements Fulfilled:**")
 st.write("""
-✅ **Stream Order 3+**: Only major drainage channels displayed  
+✅ **Stream Orders 1-5**: Individual toggles for each Strahler order  
 ✅ **UTM Zone 43N**: Accurate measurements in native projection  
 ✅ **Full Coverage**: All 11 UIT polygons (~1600 km²)  
 ✅ **Line Smoothing**: Removed DEM artifacts from stream vectors  
